@@ -13,7 +13,7 @@ use axum::{
 
 use tokio::sync::RwLock;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use japanese_properties_api::property::Property;
 
@@ -42,7 +42,15 @@ async fn main() {
         .with_state(state)
         .fallback(not_found);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|port| port.parse().ok())
+        .unwrap_or(3000);
+
+    let address = SocketAddr::from(([0, 0, 0, 0], port));
+    let listener = tokio::net::TcpListener::bind(&address).await.unwrap();
+
+    println!("Listening on http://{}", address);
     axum::serve(listener, app).await.unwrap();
 }
 
