@@ -47,3 +47,4 @@ so there are a few features that aren't implemented:
 - persistent data storage
 - reduce data size for structs in data store
 - more thorough CSV file validation and error handling
+- tracing and logging

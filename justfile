@@ -1,5 +1,11 @@
+default:
+    just list
+
+dev-server:
+    PORT=3000 cargo run
+
 server:
-    cargo run --release
+    PORT=3000 cargo run --release
 
 upload-sample:
     curl "http://localhost:3000/properties/upload" -F file=@sample/japanese_properties.csv
