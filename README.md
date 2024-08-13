@@ -2,8 +2,35 @@
 
 This is a simple API for uploading and retrieving data about Japanese real estate.
 
-This server is a toy, and not meant for production use (yet).
+This server is a toy, and not meant for production use.
 It uses a simple hash map to store data, and that data won't persist if the server restarts.
+
+## Current Deployment
+
+This app is currently deployed for cheap on Heroku.
+
+It can be reached at [this URL](http://japanese-properties-api-4cc92a0116ec.herokuapp.com).
+
+## API
+
+```
+# A simple up check to ensure the server is running
+/up
+
+# List all properties currently stored
+/properties
+
+# Show details for a specific property
+/properties/:id
+
+# Upload a CSV file with property data
+# The file must be attached as as multipart/form-data
+# For example:
+#   curl ".../properties/upload" -F file=@sample.csv
+#
+# This will delete any existing data
+/properties/upload
+```
 
 ## Build from source
 
@@ -48,3 +75,4 @@ so there are a few features that aren't implemented:
 - reduce data size for structs in data store
 - more thorough CSV file validation and error handling
 - tracing and logging
+- testing
