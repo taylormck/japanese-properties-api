@@ -34,6 +34,10 @@ impl Serialize for Property {
         s.serialize_field("id", &self.id)?;
 
         // Here's our lovely custom field
+        // This is the formal way to display Japanese addresses, though
+        // there are a couple of other variations that could have been used.
+        // For example, the chome, banchi, and go fields are sometimes diplayed
+        // as 1-2-3, or 1丁目1-2, etc.
         s.serialize_field(
             "full_address",
             &format!(
