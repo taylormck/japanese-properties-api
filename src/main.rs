@@ -5,6 +5,8 @@ use core::str;
 use axum::{
     debug_handler,
     extract::{Json, Multipart, Path, State},
+    http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
     Router,
 };
@@ -37,7 +39,8 @@ async fn main() {
         .route("/properties", get(list_properties))
         .route("/properties/upload", post(upload_csv))
         .route("/properties/:id", get(get_property))
-        .with_state(state);
+        .with_state(state)
+        .fallback(not_found);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -50,11 +53,18 @@ async fn up() -> &'static str {
 
 /// The route to upload the CSV file
 #[debug_handler]
-async fn upload_csv(State(state): State<SharedState>, mut multipart: Multipart) {
+async fn upload_csv(
+    State(state): State<SharedState>,
+    mut multipart: Multipart,
+) -> Json<Vec<Property>> {
     let db = &mut state.write().await.db;
 
     // The spec isn't completely clear about how long to preserve the property
     // data, so for now we wipe it out whenever a user uploads a new CSV file.
+    // TODO: We should be backing this data up somehow so that we can restore it
+    // in the event that this update fails.
+    // If we use a proper database, we can wrap these changes in a transaction
+    // and simply drop it on error, or commit on success.
     db.clear();
 
     while let Some(field) = multipart.next_field().await.unwrap() {
@@ -74,31 +84,43 @@ async fn upload_csv(State(state): State<SharedState>, mut multipart: Multipart) 
             .map(|row| row.split(','))
             .enumerate()
             // Map those columns into properties
-            .map(|(i, mut columns)| Property {
-                // We increment the index to start from 1.
-                // This way, we can match the rows in the CSV file
-                id: i + 1,
-                // str::split returns an iterator, so we can pull each value
-                // out one-by-one here and convert them all to owned strings.
-                // NOTE: It's important that we do this in the order that matches the CSV:
-                // prefecture, city, town, chome, banchi, go, building, price, nearest_station, property_type, land_area
-                // TODO: We should ensure the CSV is valid and correctly formed before parsing
-                prefecture: columns.next().unwrap().to_owned(),
-                city: columns.next().unwrap().to_owned(),
-                town: columns.next().unwrap().to_owned(),
-                chome: columns.next().unwrap().to_owned(),
-                banchi: columns.next().unwrap().to_owned(),
-                go: columns.next().unwrap().to_owned(),
-                building: columns.next().unwrap().to_owned(),
-                price: columns.next().unwrap().to_owned(),
-                nearest_station: columns.next().unwrap().to_owned(),
-                property_type: columns.next().unwrap().to_owned(),
-                land_area: columns.next().unwrap().to_owned(),
+            .flat_map(|(i, mut columns)| {
+                Some(Property {
+                    // We increment the index to start from 1.
+                    // This way, we can match the rows in the CSV file
+                    id: i + 1,
+                    // str::split returns an iterator, so we can pull each value
+                    // out one-by-one here and convert them all to owned strings.
+                    // If there should be an error, we return None.
+                    // None values get filtered out by the `flat_map` call.
+                    // NOTE: It's important that we do this in the order that matches the CSV:
+                    // prefecture, city, town, chome, banchi, go, building, price, nearest_station, property_type, land_area
+                    prefecture: columns.next()?.to_owned(),
+                    city: columns.next()?.to_owned(),
+                    town: columns.next()?.to_owned(),
+                    chome: columns.next()?.to_owned(),
+                    banchi: columns.next()?.to_owned(),
+                    go: columns.next()?.to_owned(),
+                    building: columns.next()?.to_owned(),
+                    price: columns.next()?.to_owned(),
+                    nearest_station: columns.next()?.to_owned(),
+                    property_type: columns.next()?.to_owned(),
+                    land_area: columns.next()?.to_owned(),
+                })
             })
             .for_each(|property| {
                 // Add each property into the db
                 db.insert(property.id, property);
             });
+    }
+
+    // TODO: report if there were any failed rows
+
+    match db.len() {
+        0 => Json(vec![]),
+        // Serde can stringify the whole list for us, but we need to
+        // collect the values into a vector first
+        _ => Json(db.values().cloned().collect()),
     }
 }
 
@@ -107,17 +129,32 @@ async fn upload_csv(State(state): State<SharedState>, mut multipart: Multipart) 
 async fn list_properties(State(state): State<SharedState>) -> Json<Vec<Property>> {
     let db = &state.read().await.db;
 
-    // Serde can stringify the whole list for us, but we need to
-    // collect the values into a vector first
-    let properties: Vec<Property> = db.values().cloned().collect();
-
-    Json(properties)
+    match db.len() {
+        0 => Json(vec![]),
+        // Serde can stringify the whole list for us, but we need to
+        // collect the values into a vector first
+        _ => Json(db.values().cloned().collect()),
+    }
 }
 
 #[debug_handler]
-async fn get_property(Path(id): Path<usize>, State(state): State<SharedState>) -> Json<Property> {
+async fn get_property(
+    Path(id): Path<usize>,
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
     let db = &state.read().await.db;
-    let property = db.get(&id).unwrap().clone();
 
-    Json(property)
+    match db.get(&id) {
+        Some(value) => Json(value.clone()).into_response(),
+        None => (StatusCode::NOT_FOUND, "Property not found").into_response(),
+    }
+}
+
+#[debug_handler]
+async fn not_found() -> impl IntoResponse {
+    (
+        StatusCode::NOT_FOUND,
+        "The page you're looking for doesn't exist",
+    )
+        .into_response()
 }
