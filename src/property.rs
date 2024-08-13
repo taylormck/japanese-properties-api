@@ -2,6 +2,11 @@
 
 use serde::{ser::SerializeStruct, Serialize};
 
+// TODO: using Strings is pretty safe, and avoids plenty of issues when
+// we're only worried about converting between CSV and JSON data.
+// However, it's likely using more memory than really necessary, so we
+// should consider downsizing a bit, such as by using raw Bytes.
+
 #[derive(Debug, Clone)]
 pub struct Property {
     pub id: usize,
@@ -32,7 +37,7 @@ impl Serialize for Property {
         s.serialize_field(
             "full_address",
             &format!(
-                "{}{}{}{}{}{}{}",
+                "{}{}{}{}丁目{}番地{}号{}",
                 &self.prefecture,
                 &self.city,
                 &self.town,
